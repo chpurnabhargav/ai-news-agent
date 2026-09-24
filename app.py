@@ -930,7 +930,7 @@ class CompareView(tk.Frame):
         return (max(numbers) if better == "max" else min(numbers))[1]
 
     def _brief(self, inner, models):
-        header = section_title(inner, "AI comparison brief", "written by Claude from the coverage + web search")
+        header = section_title(inner, "AI comparison brief", "AI-written from the coverage + web search")
         available, reason = ai_brief.availability()
         box = tk.Frame(inner, bg=CARD, padx=18, pady=14, highlightthickness=1, highlightbackground=BORDER)
         box.pack(fill="x", padx=24)
@@ -995,7 +995,7 @@ class CompareView(tk.Frame):
         if self.brief_running:
             return
         self.brief_running = True
-        self.brief_status.set(f"Claude is researching {', '.join(models)}… this can take a minute.")
+        self.brief_status.set(f"Researching {', '.join(models)}… this can take a minute.")
         models = list(models)
 
         def worker():

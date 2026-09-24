@@ -1,4 +1,4 @@
-"""Optional AI-written comparison briefs using Claude.
+"""Optional AI-written comparison briefs using the Anthropic API.
 
 Needs the `anthropic` package and credentials (ANTHROPIC_API_KEY, or a profile
 from `ant auth login`). The rest of the app works without it.
@@ -77,7 +77,7 @@ def build_context(models, max_articles_per_model=4, max_chars=6_000):
 
 
 def generate_comparison(models):
-    """Ask Claude for a comparison brief of the given models. Returns Markdown text."""
+    """Ask the AI model for a comparison brief of the given models. Returns Markdown text."""
     import anthropic
 
     client = anthropic.Anthropic()
@@ -89,7 +89,7 @@ def generate_comparison(models):
     # Web search runs server-side; a long search turn may pause and must be resumed.
     for _ in range(4):
         with client.beta.messages.stream(
-            model=config.CLAUDE_MODEL,
+            model=config.BRIEF_MODEL,
             max_tokens=16000,
             system=SYSTEM_PROMPT,
             messages=messages,
@@ -104,10 +104,10 @@ def generate_comparison(models):
         messages.append({"role": "assistant", "content": response.content})
 
     if response.stop_reason == "refusal":
-        raise RuntimeError("Claude declined to write this brief.")
+        raise RuntimeError("The AI model declined to write this brief.")
     text = "".join(block.text for block in response.content if block.type == "text").strip()
     if not text:
-        raise RuntimeError(f"Claude returned no text (stop reason: {response.stop_reason}).")
+        raise RuntimeError(f"The AI model returned no text (stop reason: {response.stop_reason}).")
     db.save_brief(brief_key(models), text)
     return text
 
@@ -119,13 +119,13 @@ def describe_error(error):
     except ImportError:
         return str(error)
     if isinstance(error, anthropic.AuthenticationError):
-        return "Claude rejected the credentials. Set ANTHROPIC_API_KEY or run `ant auth login`."
+        return "The API rejected the credentials. Set ANTHROPIC_API_KEY or run `ant auth login`."
     if isinstance(error, anthropic.RateLimitError):
-        return "Rate limited by the Claude API. Try again in a minute."
+        return "Rate limited by the Anthropic API. Try again in a minute."
     if isinstance(error, anthropic.APIConnectionError):
-        return "Could not reach the Claude API. Check your internet connection."
+        return "Could not reach the Anthropic API. Check your internet connection."
     if isinstance(error, anthropic.APIStatusError):
-        return f"Claude API error ({error.status_code}): {error.message}"
+        return f"Anthropic API error ({error.status_code}): {error.message}"
     if isinstance(error, TypeError) and "authentication" in str(error).lower():
-        return "No Claude credentials found. Set ANTHROPIC_API_KEY or run `ant auth login`."
+        return "No Anthropic API credentials found. Set ANTHROPIC_API_KEY or run `ant auth login`."
     return str(error)

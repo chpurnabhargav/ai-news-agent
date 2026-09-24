@@ -63,7 +63,7 @@ class AiBriefTests(unittest.TestCase):
 
         self.assertEqual(text, "## At a glance\n| a | b |")
         self.assertEqual(len(calls), 2)
-        self.assertEqual(calls[0]["model"], config.CLAUDE_MODEL)
+        self.assertEqual(calls[0]["model"], config.BRIEF_MODEL)
         self.assertEqual(calls[0]["tools"][0]["type"], "web_search_20260209")
         self.assertEqual(calls[1]["messages"][-1]["role"], "assistant")
         self.assertEqual(db.get_brief(ai_brief.brief_key(["GPT-5.2"]))["text"], text)

@@ -23,9 +23,9 @@ MAX_ARTICLES_PER_SOURCE = 25
 MAX_ENRICH_PER_FETCH = 15
 REQUEST_TIMEOUT = 12
 
-# Optional: Claude writes comparison briefs when an Anthropic API key is set
+# Optional: an AI model writes comparison briefs when an Anthropic API key is set
 # (ANTHROPIC_API_KEY, or an `ant auth login` profile). Everything else works offline.
-CLAUDE_MODEL = os.getenv("AI_NEWS_AGENT_CLAUDE_MODEL", "claude-opus-5")
+BRIEF_MODEL = os.getenv("AI_NEWS_AGENT_BRIEF_MODEL", "claude-opus-5")
 
 _GOOGLE_NEWS = "https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q="
 

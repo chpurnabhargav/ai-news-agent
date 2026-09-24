@@ -11,7 +11,7 @@ A desktop briefing app for artificial intelligence news. It pulls stories from A
 - **Model tracker**: every AI model mentioned in the news (GPT, o-series, Claude, Gemini, Gemma, Llama, Grok, DeepSeek, Qwen, Mistral, Phi, Kimi, GLM and more) with coverage counts and extracted highlights
 - **Model comparison**: pick up to five models to see developer, context window, input/output pricing and benchmark scores (SWE-bench, GPQA, MMLU-Pro, AIME, LMArena Elo and others) side by side, with the best value in each row starred and every number linked to the article it came from
 - **Benchmark extraction**: the full text of model-release articles is downloaded so numbers from the article body are captured, not just the RSS summary
-- **Optional AI comparison brief**: Claude writes a comparison (what's new, a numbers table, trade-offs and which model to use for what). It uses the stored coverage and checks the figures with web search
+- **Optional AI comparison brief**: an AI model writes a comparison (what's new, a numbers table, trade-offs and which model to use for what). It uses the stored coverage and checks the figures with web search
 - Search, filter by time range, source or topic, and save articles for later
 - Optionally fetches once per day when the computer is online
 
@@ -82,7 +82,7 @@ Figures in the comparison table are extracted automatically from articles, so th
 
 ## AI Comparison Briefs (Optional)
 
-The **Generate brief** button on the Compare page asks Claude to write a comparison of the selected models. It needs the `anthropic` package (included in `requirements.txt`) and an Anthropic API key:
+The **Generate brief** button on the Compare page asks an AI model to write a comparison of the selected models. It needs the `anthropic` package (included in `requirements.txt`) and an Anthropic API key:
 
 ```powershell
 $env:ANTHROPIC_API_KEY = "sk-ant-..."
@@ -94,7 +94,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 python app.py
 ```
 
-Briefs use `claude-opus-5` by default and are saved, so reopening the same comparison on the same day does not call the API again. Set `AI_NEWS_AGENT_CLAUDE_MODEL` to use a different Claude model. Each brief is one API request that may include a few web searches, and both are billed to your Anthropic account. The rest of the app works without a key.
+Briefs use `claude-opus-5` by default and are saved, so reopening the same comparison on the same day does not call the API again. Set `AI_NEWS_AGENT_BRIEF_MODEL` to use a different model. Each brief is one API request that may include a few web searches, and both are billed to your Anthropic account. The rest of the app works without a key.
 
 ## Automatic Daily Fetching
 
@@ -153,7 +153,7 @@ python -m unittest discover -s tests -v
 | `app.py` | Tkinter desktop application |
 | `fetcher.py` | RSS fetching, article parsing and full-text enrichment |
 | `analyzer.py` | Topic classification, ranking, model detection and benchmark extraction |
-| `ai_brief.py` | Optional Claude-written comparison briefs |
+| `ai_brief.py` | Optional AI-written comparison briefs |
 | `db.py` | SQLite database operations |
 | `config.py` | Feed and storage configuration |
 | `watcher.py` | Optional daily background fetcher |
