@@ -5,11 +5,12 @@ import subprocess
 import sys
 import time
 
+import config
 import db
 import fetcher
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MARKER = os.path.join(os.path.dirname(db.DB_PATH), "last_run.txt")
+MARKER = os.path.join(config.DATA_DIR, "last_run.txt")
 CHECK_INTERVAL = 300
 
 
