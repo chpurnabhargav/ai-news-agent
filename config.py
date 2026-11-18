@@ -1,3 +1,4 @@
+import json
 import os
 
 
@@ -16,6 +17,27 @@ def _data_dir():
 DATA_DIR = _data_dir()
 DB_PATH = os.path.join(DATA_DIR, "news.db")
 
+# Display preferences, changed from the app's sidebar.
+DEFAULT_SETTINGS = {"theme": "light", "text_size": "normal"}
+
+
+def load_settings():
+    settings = dict(DEFAULT_SETTINGS)
+    try:
+        with open(os.path.join(DATA_DIR, "settings.json"), "r", encoding="utf-8") as f:
+            stored = json.load(f)
+        settings.update({k: v for k, v in stored.items() if k in DEFAULT_SETTINGS})
+    except (OSError, ValueError):
+        pass
+    return settings
+
+
+def save_settings(settings):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(os.path.join(DATA_DIR, "settings.json"), "w", encoding="utf-8") as f:
+        json.dump(settings, f, indent=2)
+
+
 MAX_ARTICLES_PER_SOURCE = 25
 
 # How many model-release articles to download in full per fetch. The full text
@@ -23,9 +45,10 @@ MAX_ARTICLES_PER_SOURCE = 25
 MAX_ENRICH_PER_FETCH = 15
 REQUEST_TIMEOUT = 12
 
-# Optional: an AI model writes comparison briefs when an Anthropic API key is set
-# (ANTHROPIC_API_KEY, or an `ant auth login` profile). Everything else works offline.
-BRIEF_MODEL = os.getenv("AI_NEWS_AGENT_BRIEF_MODEL", "claude-opus-5")
+# Optional: an AI model writes comparison briefs and "Must know" explanations when an
+# Anthropic API key is set (ANTHROPIC_API_KEY, or an `ant auth login` profile).
+# Everything else works offline.
+BRIEF_MODEL = os.getenv("AI_NEWS_AGENT_BRIEF_MODEL", "claude-opus-5-5")
 
 _GOOGLE_NEWS = "https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q="
 

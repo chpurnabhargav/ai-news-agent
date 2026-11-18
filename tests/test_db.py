@@ -78,6 +78,43 @@ class DatabaseTests(unittest.TestCase):
         facts = db.model_facts(["Claude Opus 4.5"])["Claude Opus 4.5"]
         self.assertEqual([(f["name"], f["value"]) for f in facts], [("SWE-bench Verified", 80.9)])
 
+    def test_gists_are_stored_and_backfilled(self):
+        article_id = self.add("Meta releases Llama 5", "Meta released Llama 5 today under an open license.")
+        self.assertEqual(db.query_articles()[0]["gist"], "Meta released Llama 5 today under an open license.")
+
+        conn = db.get_connection()
+        conn.execute("UPDATE news SET gist = NULL")
+        conn.commit()
+        conn.close()
+        import fetcher
+        self.assertEqual(fetcher.backfill_gists(), 1)
+        self.assertEqual(db.query_articles()[0]["gist"], "Meta released Llama 5 today under an open license.")
+        self.assertEqual(fetcher.backfill_gists(), 0)
+
+        # Downloaded article text fills a gist the feed could not provide, but never replaces one.
+        db.set_gists([(article_id, "")])
+        db.set_content(article_id, "full text", gist="From the article.")
+        db.set_content(article_id, "full text")
+        self.assertEqual(db.query_articles()[0]["gist"], "From the article.")
+
+    def test_article_facts_and_saved_count(self):
+        article_id = self.add("Google unveils Gemini 3 Pro", "Gemini 3 Pro scores 91.9% on GPQA Diamond.")
+        facts = db.article_facts([article_id])[article_id]
+        self.assertEqual([(f["model"], f["name"], f["value"]) for f in facts],
+                         [("Gemini 3 Pro", "GPQA Diamond", 91.9)])
+        self.assertEqual(db.article_facts([]), {})
+        self.assertEqual(db.count_saved(), 0)
+        db.set_bookmark(article_id, True)
+        self.assertEqual(db.count_saved(), 1)
+
+    def test_display_settings_round_trip(self):
+        self.assertEqual(config.load_settings(), {"theme": "light", "text_size": "normal"})
+        config.save_settings({"theme": "dark", "text_size": "large"})
+        self.assertEqual(config.load_settings(), {"theme": "dark", "text_size": "large"})
+        with open(f"{self.tmp}/settings.json", "w") as f:
+            f.write("not json")
+        self.assertEqual(config.load_settings()["theme"], "light")
+
     def test_migrates_databases_from_the_first_version(self):
         conn = db.get_connection()
         conn.executescript("""

@@ -1,3 +1,4 @@
+import json
 import shutil
 import sys
 import tempfile
@@ -67,6 +68,42 @@ class AiBriefTests(unittest.TestCase):
         self.assertEqual(calls[0]["tools"][0]["type"], "web_search_20260209")
         self.assertEqual(calls[1]["messages"][-1]["role"], "assistant")
         self.assertEqual(db.get_brief(ai_brief.brief_key(["GPT-5.2"]))["text"], text)
+
+    def test_must_know_digest_is_generated_and_cached(self):
+        article = db.query_articles()[0]
+        picks = [{"lead": article, "duplicates": [], "sources": [article["source"]], "importance": 80}]
+        calls = []
+        answer = json.dumps({
+            "bottom_line": "One big launch today.",
+            "must_know": [{"id": article["id"], "what": "OpenAI released GPT-5.2.", "why": "Better coding."}],
+            "gists": [{"id": 999, "gist": "Other story."}, {"id": 1000, "gist": ""}],
+        })
+
+        def stream(**kwargs):
+            calls.append(kwargs)
+            return FakeStream(message("end_turn", answer))
+
+        client = types.SimpleNamespace(beta=types.SimpleNamespace(messages=types.SimpleNamespace(stream=stream)))
+        with mock.patch.dict(sys.modules, {"anthropic": types.SimpleNamespace(Anthropic=lambda: client)}):
+            digest = ai_brief.generate_must_know(picks, [])
+
+        request = calls[0]
+        self.assertEqual(request["model"], config.BRIEF_MODEL)
+        self.assertEqual(request["output_config"]["format"]["type"], "json_schema")
+        self.assertIn(f"## id {article['id']}: OpenAI launches GPT-5.2", request["messages"][0]["content"])
+        self.assertIn("GPT-5.2 SWE-bench Verified 80.1%", request["messages"][0]["content"])
+        self.assertEqual(digest["bottom_line"], "One big launch today.")
+        self.assertEqual(digest["items"][article["id"]]["why"], "Better coding.")
+        self.assertEqual(digest["gists"], {999: "Other story."})
+        self.assertEqual(ai_brief.get_must_know_digest()["bottom_line"], "One big launch today.")
+
+    def test_must_know_rejects_truncated_answers(self):
+        client = types.SimpleNamespace(beta=types.SimpleNamespace(messages=types.SimpleNamespace(
+            stream=lambda **kwargs: FakeStream(message("max_tokens", "{")))))
+        with mock.patch.dict(sys.modules, {"anthropic": types.SimpleNamespace(Anthropic=lambda: client)}):
+            with self.assertRaises(RuntimeError):
+                ai_brief.generate_must_know([], [])
+        self.assertIsNone(ai_brief.get_must_know_digest())
 
     def test_refusal_raises(self):
         client = types.SimpleNamespace(beta=types.SimpleNamespace(messages=types.SimpleNamespace(

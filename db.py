@@ -16,11 +16,12 @@ _NEWS_COLUMNS = {
     "content": "TEXT",
     "bookmarked": "INTEGER DEFAULT 0",
     "analyzed": "INTEGER DEFAULT 0",
+    "gist": "TEXT",
 }
 
 _ARTICLE_FIELDS = (
     "id, title, link, summary, source, published_at, fetched_at, category, tags, models, "
-    "score, is_release, bookmarked"
+    "score, is_release, bookmarked, gist"
 )
 
 
@@ -128,7 +129,8 @@ def insert_article(title, link, summary, source, published_at, analysis=None):
 def _save_analysis(conn, article_id, analysis):
     conn.execute(
         """
-        UPDATE news SET category = ?, tags = ?, models = ?, score = ?, is_release = ?, analyzed = 1
+        UPDATE news SET category = ?, tags = ?, models = ?, score = ?, is_release = ?, analyzed = 1,
+                        gist = COALESCE(?, gist)
         WHERE id = ?
         """,
         (
@@ -137,6 +139,7 @@ def _save_analysis(conn, article_id, analysis):
             json.dumps([m["name"] for m in analysis["models"]]),
             analysis["score"],
             int(analysis["is_release"]),
+            analysis.get("gist"),
             article_id,
         ),
     )
@@ -174,12 +177,21 @@ def add_facts(article_id, facts, conn=None):
         conn.close()
 
 
-def set_content(article_id, content, score=None):
+def set_content(article_id, content, score=None, gist=None):
+    """Store downloaded article text; `score` and `gist` are only changed when given."""
     conn = get_connection()
-    if score is None:
-        conn.execute("UPDATE news SET content = ? WHERE id = ?", (content, article_id))
-    else:
-        conn.execute("UPDATE news SET content = ?, score = ? WHERE id = ?", (content, score, article_id))
+    conn.execute(
+        "UPDATE news SET content = ?, score = COALESCE(?, score), gist = COALESCE(?, gist) WHERE id = ?",
+        (content, score, gist, article_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def set_gists(gists):
+    """gists: iterable of (article_id, gist)."""
+    conn = get_connection()
+    conn.executemany("UPDATE news SET gist = ? WHERE id = ?", [(gist, article_id) for article_id, gist in gists])
     conn.commit()
     conn.close()
 
@@ -216,6 +228,14 @@ def _article(row):
 def get_unanalyzed():
     conn = get_connection()
     rows = conn.execute("SELECT id, title, summary, source FROM news WHERE analyzed = 0 OR analyzed IS NULL").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_missing_gists():
+    """Articles stored before gists existed."""
+    conn = get_connection()
+    rows = conn.execute("SELECT id, title, summary, content FROM news WHERE gist IS NULL").fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -356,6 +376,34 @@ def model_facts(models):
     for row in rows:
         facts[row["model"]].append(dict(row))
     return facts
+
+
+def article_facts(article_ids):
+    """Facts extracted from each article: {article_id: [fact, ...]}."""
+    article_ids = list(article_ids)
+    if not article_ids:
+        return {}
+    conn = get_connection()
+    rows = conn.execute(
+        f"""
+        SELECT article_id, model, kind, name, value, unit FROM model_facts
+        WHERE article_id IN ({','.join('?' * len(article_ids))})
+        ORDER BY id
+        """,
+        article_ids,
+    ).fetchall()
+    conn.close()
+    facts = {article_id: [] for article_id in article_ids}
+    for row in rows:
+        facts[row["article_id"]].append(dict(row))
+    return facts
+
+
+def count_saved():
+    conn = get_connection()
+    n = conn.execute("SELECT COUNT(*) FROM news WHERE bookmarked = 1").fetchone()[0]
+    conn.close()
+    return n
 
 
 def get_brief(key):

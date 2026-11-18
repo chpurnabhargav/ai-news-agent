@@ -1,3 +1,4 @@
+import datetime
 import unittest
 
 import analyzer
@@ -107,6 +108,111 @@ class ClusterTests(unittest.TestCase):
         clusters = analyzer.cluster_articles(articles)
         self.assertEqual(len(clusters), 2)
         self.assertEqual(len(clusters[0][1]), 1)
+
+    def test_merges_launch_coverage_worded_differently(self):
+        articles = [
+            {"title": "Introducing GPT-5.5: faster reasoning and better coding", "models": ["GPT-5.5"],
+             "is_release": True},
+            {"title": "OpenAI launches GPT-5.5 with a big jump in coding scores", "models": ["GPT-5.5", "GPT-5.2"],
+             "is_release": True},
+            {"title": "OpenAI releases GPT-5.5 - Reuters", "models": ["GPT-5.5"], "is_release": True},
+            {"title": "GPT-5.5 system card", "models": ["GPT-5.5"], "is_release": False},
+        ]
+        clusters = analyzer.cluster_articles(articles)
+        self.assertEqual([len(dupes) for _, dupes in clusters], [2, 0])
+
+    def test_merges_headlines_naming_the_same_things(self):
+        articles = [
+            {"title": "EU begins enforcing AI Act obligations for frontier model makers", "models": []},
+            {"title": "The EU AI Act's rules for general-purpose models start to bite", "models": []},
+            {"title": "EU fines a social network over data transfers", "models": []},
+        ]
+        clusters = analyzer.cluster_articles(articles)
+        self.assertEqual([len(dupes) for _, dupes in clusters], [1, 0])
+
+
+class GistTests(unittest.TestCase):
+    def test_uses_whole_sentences_and_drops_boilerplate(self):
+        summary = ("SAN FRANCISCO (Reuters) - OpenAI on Tuesday released GPT-5.5, a model it says is better at "
+                   "coding. It scores 82% on SWE-bench Verified. The post OpenAI launches GPT-5.5 appeared first "
+                   "on Example News.")
+        self.assertEqual(analyzer.make_gist("OpenAI launches GPT-5.5", summary),
+                         "OpenAI on Tuesday released GPT-5.5, a model it says is better at coding. "
+                         "It scores 82% on SWE-bench Verified.")
+
+    def test_headline_only_summaries_have_no_gist(self):
+        self.assertEqual(analyzer.make_gist("Nvidia earnings beat - Reuters", "Nvidia earnings beat - Reuters  Reuters"),
+                         "")
+        hn = "Article URL: https://example.com Comments URL: https://news.ycombinator.com/item?id=1 Points: 9"
+        self.assertEqual(analyzer.make_gist("Show HN: a tool", hn), "")
+
+    def test_falls_back_to_article_text(self):
+        content = ("Subscribe to our newsletter.\n"
+                   "The new model can summarise long reports and answer questions about them in seconds.\n")
+        self.assertEqual(analyzer.make_gist("A new model", "", content),
+                         "The new model can summarise long reports and answer questions about them in seconds.")
+
+    def test_short_gist_keeps_whole_sentences(self):
+        gist = "First sentence is here. Second sentence is a little longer than the first one."
+        self.assertEqual(analyzer.short_gist(gist, 30), "First sentence is here.")
+        self.assertEqual(analyzer.short_gist(gist, 500), gist)
+        self.assertTrue(analyzer.short_gist("x" * 50 + " word " * 20, 40).endswith("…"))
+
+    def test_analysis_includes_a_gist(self):
+        analysis = analyzer.analyze("Meta releases Llama 5", "Meta released Llama 5 today under an open license.")
+        self.assertEqual(analysis["gist"], "Meta released Llama 5 today under an open license.")
+
+
+class MustKnowTests(unittest.TestCase):
+    NOW = datetime.datetime(2026, 11, 18, 12, 0)
+
+    def story(self, title, score, category="General", hours=2, source="News", **extra):
+        return dict(title=title, score=score, category=category, source=source,
+                    published_at=self.NOW - datetime.timedelta(hours=hours), **extra)
+
+    def test_ranks_by_importance_with_a_topic_cap_and_a_floor(self):
+        releases = [(self.story(f"Release {i}", 70 - i, "Model Release"), []) for i in range(5)]
+        clusters = releases + [
+            (self.story("Startup raises $2 billion", 17, "Business & Funding"), []),
+            (self.story("A practical guide", 12, "Products & Tools"), []),
+        ]
+        picks = analyzer.pick_must_know(clusters, self.NOW)
+        self.assertEqual([p["lead"]["title"] for p in picks],
+                         ["Release 0", "Release 1", "Release 2", "Startup raises $2 billion"])
+
+    def test_wide_coverage_and_recency_raise_importance(self):
+        lead = self.story("Story", 30)
+        self.assertGreater(analyzer.importance(lead, 4, 2), analyzer.importance(lead, 1, 2))
+        self.assertLess(analyzer.importance(lead, 1, 96), analyzer.importance(lead, 1, 2))
+
+    def test_sources_are_distinct_and_lead_first(self):
+        lead = self.story("A", 10, source="OpenAI")
+        dupes = [self.story("B", 5, source="The Verge"), self.story("C", 5, source="OpenAI")]
+        self.assertEqual(analyzer.story_sources(lead, dupes), ["OpenAI", "The Verge"])
+
+    def test_why_it_matters_explains_a_release(self):
+        lead = self.story("OpenAI launches GPT-5.5", 80, "Model Release", source="OpenAI", is_release=True)
+        facts = [{"model": "GPT-5.5", "kind": "benchmark", "name": "SWE-bench Verified", "value": 82.4, "unit": "%"},
+                 {"model": "GPT-5.5", "kind": "context", "name": "Context window", "value": 1e6, "unit": "tokens"}]
+        reasons = analyzer.why_it_matters(lead, ["OpenAI", "The Verge"], facts, "official")
+        self.assertEqual(reasons, [
+            "New model release from OpenAI: GPT-5.5",
+            "Official announcement from OpenAI",
+            "Covered by 2 outlets (OpenAI, The Verge)",
+            "Reported benchmark scores: SWE-bench Verified 82.4%",
+        ])
+
+    def test_why_it_matters_mentions_money_and_topic(self):
+        lead = self.story("Chip startup raises $2 billion at a $30 billion valuation", 17, "Business & Funding")
+        self.assertEqual(analyzer.why_it_matters(lead, ["TechCrunch"]), [
+            "Money involved: $2 billion and $30 billion",
+            "Money and deals that shape which AI companies lead",
+        ])
+
+    def test_fact_text_does_not_repeat_units(self):
+        fact = {"model": "Gemini 3.5 Pro", "kind": "benchmark", "name": "LMArena Elo", "value": 1532.0, "unit": "Elo"}
+        self.assertEqual(analyzer.fact_text(fact), "LMArena Elo 1532")
+        self.assertEqual(analyzer.fact_text(fact, with_model=True), "Gemini 3.5 Pro · LMArena Elo 1532")
 
 
 if __name__ == "__main__":

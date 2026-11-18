@@ -100,7 +100,17 @@ def analyze_pending():
         db.save_analysis(row["id"], analyzer.analyze(row["title"], row["summary"] or "", kind))
     if pending:
         logging.info(f"Analysed {len(pending)} previously stored articles")
+    backfill_gists()
     return len(pending)
+
+
+def backfill_gists():
+    """Write gists for articles stored before gists existed."""
+    rows = db.get_missing_gists()
+    if rows:
+        db.set_gists((row["id"], analyzer.make_gist(row["title"], row["summary"], row["content"])) for row in rows)
+        logging.info(f"Wrote gists for {len(rows)} stored articles")
+    return len(rows)
 
 
 # ---------------------------------------------------------------------------
@@ -147,15 +157,17 @@ def enrich_releases(report=None):
         results = list(pool.map(_enrich, articles))
     for article, text in results:
         text = text[:40_000]
-        score = None
+        score = gist = None
         if text:
+            if not article.get("gist"):
+                gist = analyzer.make_gist(article["title"], article["summary"], text) or None
             title_models = analyzer.detect_models(article["title"])
             primary = title_models[0] if title_models else None
             facts = analyzer.extract_facts(text, primary)
             db.add_facts(article["id"], facts)
             benchmarks = len({(f["model"], f["name"]) for f in facts if f["kind"] == "benchmark"})
             score = min(100.0, article["score"] + min(benchmarks, 5) * 2)
-        db.set_content(article["id"], text, score)
+        db.set_content(article["id"], text, score, gist)
     return sum(1 for _, text in results if text)
 
 
